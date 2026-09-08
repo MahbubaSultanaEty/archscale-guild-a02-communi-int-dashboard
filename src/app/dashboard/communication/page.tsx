@@ -2,7 +2,7 @@
 
 import React, { useState, useId } from "react";
 import Link from "next/link";
-import { Priority, ActionItem } from "@/types";
+import { Priority, ActionItem, AnalysisResponse, ExtractedActionItem } from "@/types";
 
 export default function CommunicationPage() {
   const [selectedClient, setSelectedClient] = useState("Evelyn Vance — Vance Penthouse");
@@ -11,18 +11,10 @@ export default function CommunicationPage() {
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
 
-  const [analysisResult, setAnalysisResult] = useState<{
-    client: string;
-    project: string;
-    description: string;
-    priority: Priority;
-    deadline: string;
-  } | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
 
   const inputClientSelectId = useId();
   const inputMessageTextareaId = useId();
-  const inputAiPriorityId = useId();
-  const inputAiDeadlineId = useId();
 
   // Call the /api/analyze endpoint (powered by Gemini)
   const handleAnalyze = async () => {
@@ -36,7 +28,6 @@ export default function CommunicationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: rawText,
-          client: selectedClient,
         }),
       });
 
@@ -44,13 +35,18 @@ export default function CommunicationPage() {
         throw new Error("Failed to analyze text");
       }
 
-      const data = await response.json();
+      const data: AnalysisResponse = await response.json();
+      const defaultClient = selectedClient.split(" — ")[0] || "Client";
+
       setAnalysisResult({
-        client: data.client || "Client",
-        project: data.project || "Active Project",
-        description: data.description || "Review client request.",
-        priority: (data.priority as Priority) || "Medium",
-        deadline: data.deadline || new Date().toISOString().split("T")[0],
+        summary: data.summary || "",
+        decisions: data.decisions || [],
+        actionItems: (data.actionItems || []).map((item) => ({
+          task: item.task || "",
+          client: item.client && item.client !== "Not specified" ? item.client : defaultClient,
+          deadline: item.deadline || "Not specified",
+          priority: (item.priority as Priority) || "Medium",
+        })),
       });
     } catch (err) {
       console.error(err);
@@ -60,23 +56,39 @@ export default function CommunicationPage() {
     }
   };
 
-  // Save to MongoDB / Action Items registry
-  const handleSaveToDatabase = async () => {
+  // Update a single action item in state
+  const handleUpdateActionItem = (index: number, field: keyof ExtractedActionItem, value: string) => {
     if (!analysisResult) return;
-
-    const newItem: ActionItem = {
-      id: "act-" + Date.now(),
-      client: analysisResult.client,
-      project: analysisResult.project,
-      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      description: analysisResult.description,
-      priority: analysisResult.priority,
-      deadline: analysisResult.deadline,
-      status: "Pending",
+    const updatedItems = [...analysisResult.actionItems];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      [field]: value,
     };
+    setAnalysisResult({
+      ...analysisResult,
+      actionItems: updatedItems,
+    });
+  };
 
-    // Ready for: await fetch('/api/action-items', { method: 'POST', body: JSON.stringify(newItem) });
-    console.log("Saving action item:", newItem);
+  // Save extracted action items to database / registry
+  const handleSaveToDatabase = async () => {
+    if (!analysisResult || analysisResult.actionItems.length === 0) return;
+
+    const [, defaultProject] = selectedClient.split(" — ");
+
+    const newItems: ActionItem[] = analysisResult.actionItems.map((item, idx) => ({
+      id: "act-" + (Date.now() + idx),
+      client: item.client || "Client",
+      project: defaultProject || "Active Project",
+      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      description: item.task,
+      priority: item.priority,
+      deadline: item.deadline !== "Not specified" ? item.deadline : undefined,
+      status: "Pending",
+    }));
+
+    // Ready for: await fetch('/api/action-items', { method: 'POST', body: JSON.stringify(newItems) });
+    console.log("Saving action items to database:", newItems);
 
     setAnalysisResult(null);
     setRawText("");
@@ -90,7 +102,7 @@ export default function CommunicationPage() {
       {saveSuccessNotice && (
         <div className="p-4 rounded-xl bg-[#2F6B4F]/90 border border-white/30 text-white text-sm flex items-center justify-between shadow-lg">
           <span className="flex items-center gap-2 font-medium">
-            ✓ Successfully saved action item!
+            ✓ Successfully saved action items!
           </span>
           <Link
             href="/dashboard/action-items"
@@ -122,7 +134,7 @@ export default function CommunicationPage() {
             Paste & Analyze Communication
           </h2>
           <p className="text-xs sm:text-sm text-[#EAF6EE]/75 mt-1 font-body">
-            Paste raw emails, WhatsApp threads, voice transcripts, or meeting notes below.
+            Paste raw client emails, WhatsApp threads, voice transcripts, or meeting notes below.
           </p>
         </div>
 
@@ -186,12 +198,12 @@ export default function CommunicationPage() {
               !rawText.trim() || isAnalyzing ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
-            {isAnalyzing ? "Extracting Main Task with AI..." : "Analyze"}
+            {isAnalyzing ? "Extracting Intelligence..." : "Analyze"}
           </button>
         </div>
       </div>
 
-      {/* Extracted AI Result Card */}
+      {/* Extracted AI Result Panel */}
       {analysisResult && (
         <div className="glass-panel p-6 sm:p-8 space-y-6 border-white/30">
           <div className="flex items-center justify-between border-b border-white/15 pb-4">
@@ -200,73 +212,117 @@ export default function CommunicationPage() {
                 AI Synthesis Complete
               </span>
               <h3 className="text-lg sm:text-xl font-heading text-white mt-0.5">
-                Extracted Action Item
+                Extracted Project Intelligence
               </h3>
             </div>
             <span className="text-xs px-3 py-1 rounded-full bg-[#0F2A1F]/65 border border-white/18 text-[#EAF6EE]/85 font-body">
-              {analysisResult.project}
+              {selectedClient.split(" — ")[1] || "Project"}
             </span>
           </div>
 
-          {/* Editable Priority & Deadline */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor={inputAiPriorityId}
-                className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium mb-1 font-body"
-              >
-                Priority (Editable)
-              </label>
-              <select
-                id={inputAiPriorityId}
-                value={analysisResult.priority}
-                onChange={(e) =>
-                  setAnalysisResult({
-                    ...analysisResult,
-                    priority: e.target.value as Priority,
-                  })
-                }
-                className="w-full px-3 py-2.5 glass-input text-sm text-white cursor-pointer [&>option]:bg-[#0F2A1F] font-body"
-              >
-                <option value="High">High Priority</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </div>
-
-            <div>
-              <label
-                htmlFor={inputAiDeadlineId}
-                className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium mb-1 font-body"
-              >
-                Target Deadline (Editable)
-              </label>
-              <input
-                id={inputAiDeadlineId}
-                type="date"
-                value={analysisResult.deadline}
-                onChange={(e) =>
-                  setAnalysisResult({
-                    ...analysisResult,
-                    deadline: e.target.value,
-                  })
-                }
-                className="w-full px-3 py-2.5 glass-input text-sm text-white font-body"
-              />
-            </div>
-          </div>
-
-          {/* Extracted Core Task Statement */}
+          {/* 1. Summary (Complete Sentence) */}
           <div>
-            <span className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium mb-1 font-body">
-              Extracted Deliverable Statement
+            <span className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium mb-1.5 font-body">
+              Executive Summary
             </span>
-            <div className="p-4 rounded-xl bg-[#0F2A1F]/65 border border-white/18 text-sm leading-relaxed text-white font-body">
-              {analysisResult.description}
+            <div className="p-3.5 rounded-xl bg-[#0F2A1F]/65 border border-white/18 text-sm text-white/95 font-body leading-relaxed">
+              {analysisResult.summary || "No summary provided."}
             </div>
           </div>
 
-          {/* Discard & Save */}
+          {/* 2. Decisions (if any) */}
+          {analysisResult.decisions && analysisResult.decisions.length > 0 && (
+            <div>
+              <span className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium mb-2 font-body">
+                Client Decisions Made
+              </span>
+              <ul className="space-y-1.5">
+                {analysisResult.decisions.map((decision, dIdx) => (
+                  <li
+                    key={dIdx}
+                    className="flex items-start gap-2 text-xs text-white/90 font-body bg-[#0F2A1F]/45 p-2.5 rounded-lg border border-white/10"
+                  >
+                    <span className="text-[#FFC466] font-bold">✓</span>
+                    <span>{decision}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* 3. Action Items */}
+          <div className="space-y-4">
+            <span className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium font-body">
+              Action Items ({analysisResult.actionItems.length})
+            </span>
+
+            {analysisResult.actionItems.map((item, index) => (
+              <div
+                key={index}
+                className="p-5 rounded-xl bg-[#0F2A1F]/65 border border-white/20 space-y-4"
+              >
+                {/* Task Field */}
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium mb-1 font-body">
+                    Task / Deliverable (Editable)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={item.task}
+                    onChange={(e) => handleUpdateActionItem(index, "task", e.target.value)}
+                    className="w-full p-3 glass-input text-sm leading-relaxed text-white font-body resize-y"
+                    placeholder="Describe the actionable task..."
+                  />
+                </div>
+
+                {/* Client, Priority, Deadline */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium mb-1 font-body">
+                      Client
+                    </label>
+                    <input
+                      type="text"
+                      value={item.client}
+                      onChange={(e) => handleUpdateActionItem(index, "client", e.target.value)}
+                      placeholder="e.g. Evelyn Vance"
+                      className="w-full px-3 py-2 glass-input text-sm text-white font-body"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium mb-1 font-body">
+                      Priority
+                    </label>
+                    <select
+                      value={item.priority}
+                      onChange={(e) => handleUpdateActionItem(index, "priority", e.target.value as Priority)}
+                      className="w-full px-3 py-2 glass-input text-sm text-white cursor-pointer [&>option]:bg-[#0F2A1F] font-body"
+                    >
+                      <option value="High">High Priority</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Low">Low</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-[#EAF6EE]/80 font-medium mb-1 font-body">
+                      Deadline
+                    </label>
+                    <input
+                      type="text"
+                      value={item.deadline}
+                      onChange={(e) => handleUpdateActionItem(index, "deadline", e.target.value)}
+                      placeholder="e.g. YYYY-MM-DD"
+                      className="w-full px-3 py-2 glass-input text-sm text-white font-body"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Actions */}
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
@@ -280,7 +336,7 @@ export default function CommunicationPage() {
               onClick={handleSaveToDatabase}
               className="px-8 py-2.5 btn-primary text-xs tracking-wide cursor-pointer"
             >
-              Save
+              Save to Registry
             </button>
           </div>
         </div>

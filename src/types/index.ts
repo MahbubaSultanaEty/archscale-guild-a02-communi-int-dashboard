@@ -12,6 +12,19 @@ export interface ActionItem {
   status: Status;
 }
 
+export interface ExtractedActionItem {
+  task: string;
+  client: string;
+  deadline: string;
+  priority: Priority;
+}
+
+export interface AnalysisResponse {
+  summary: string;
+  decisions: string[];
+  actionItems: ExtractedActionItem[];
+}
+
 export interface ProjectStreamItem {
   id: string;
   name: string;
