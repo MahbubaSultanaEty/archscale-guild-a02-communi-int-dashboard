@@ -1,26 +1,145 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --deep-forest: #0F2A1F;
+    --studio-green: #2F6B4F;
+    --mint: #EAF6EE;
+    --amber: #FFC466;
+    --glass-bg: rgba(15, 42, 31, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.18);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    color: #EAF6EE;
+    background-color: #0F2A1F;
+    /* 4. Background overlay back to original ~0.75-0.85 opacity */
+    background-image: 
+      linear-gradient(135deg, rgba(15, 42, 31, 0.85), rgba(47, 107, 79, 0.75)),
+      url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?q=80&w=2070&auto=format&fit=crop');
+    background-attachment: fixed;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    font-family: var(--font-work-sans), sans-serif;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Headings: pure white + subtle shadow */
+h1, h2, h3, h4, h5, h6, .font-heading {
+  font-family: var(--font-fraunces), Georgia, serif;
+  color: #FFFFFF !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.40);
+}
+
+.font-body {
+  font-family: var(--font-work-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* 1 & 2 & 3. Dark forest green glass panels with light border & text-shadow */
+.glass-panel {
+  background: rgba(15, 42, 31, 0.65);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.40);
+}
+
+.glass-input {
+  background: rgba(15, 42, 31, 0.60);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #FFFFFF;
+  border-radius: 12px;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.40);
+}
+
+.glass-input:focus {
+  background: rgba(15, 42, 31, 0.80);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.glass-input::placeholder {
+  color: rgba(234, 246, 238, 0.65);
+  text-shadow: none;
+}
+
+/* Nav Inactive: dark green glass pill */
+.glass-pill-inactive {
+  background: rgba(15, 42, 31, 0.55);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #EAF6EE;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.40);
+  transition: all 0.2s ease;
+}
+
+.glass-pill-inactive:hover {
+  background: rgba(15, 42, 31, 0.75);
+  border-color: rgba(255, 255, 255, 0.30);
+}
+
+/* 5. Nav Active: the ONE bright high-contrast element (solid near-white + dark green text) */
+.glass-pill-active {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 1);
+  color: #0F2A1F;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  text-shadow: none;
+}
+
+/* Priority Tags */
+.tag-amber-priority {
+  background: rgba(255, 196, 102, 0.55);
+  border: 1px solid rgba(255, 196, 102, 0.80);
+  color: #4A2E00;
+  font-weight: 600;
+  text-shadow: none;
+}
+
+.tag-neutral-priority {
+  background: rgba(234, 246, 238, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #EAF6EE;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.40);
+}
+
+/* 5. Primary Action Button (Complete / Analyze / Save): solid near-white + dark green text */
+.btn-primary {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0F2A1F;
+  font-weight: 600;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 1);
+  text-shadow: none;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.30);
+}
+
+/* Ghost Button (Reject / Discard) */
+.btn-ghost {
+  background: rgba(15, 42, 31, 0.50);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  color: #EAF6EE;
+  border-radius: 9999px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.40);
+  transition: all 0.2s ease;
+}
+
+.btn-ghost:hover {
+  background: rgba(15, 42, 31, 0.75);
+  border-color: rgba(255, 255, 255, 0.35);
 }
