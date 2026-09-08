@@ -12,17 +12,10 @@ export interface ActionItem {
   status: Status;
 }
 
-export interface ExtractedActionItem {
-  task: string;
-  client: string;
-  deadline: string;
-  priority: Priority;
-}
-
+// Simplified API response — decisions ARE the actions
 export interface AnalysisResponse {
   summary: string;
   decisions: string[];
-  actionItems: ExtractedActionItem[];
 }
 
 export interface ProjectStreamItem {
