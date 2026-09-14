@@ -158,7 +158,7 @@ This guarantees the API response is valid JSON matching the schema, removing the
 
 A conservative input length cap is applied before sending text to the API, to avoid excessive token usage on the free tier.
 
-**Note on `client`:** it's deliberately left out of the AI schema. The admin already selects the client/project from a dropdown before the conversation is pasted, so there's nothing for the AI to extract — see the request flow below.
+**Note on `client`:** it's deliberately left out of the AI schema. The admin already selects the client/project from a dropdown before the conversation is pasted, so there's nothing for the AI to extract — see the request flow below.And the client list comes directly from MongoDB Database.
 
 **Request flow for `/api/analyze`:**
 
@@ -176,7 +176,123 @@ The client name can optionally be passed into the prompt as *context* (e.g. "thi
 
 ---
 
-## 8. Example Input / Output
+## 8. AI Communication Analysis — Debugging Case Study
+
+## Overview
+
+The `/api/analyze` route accepts raw client communications (emails, WhatsApp
+threads, meeting notes) and uses the Gemini API with a structured
+`responseSchema` to extract:
+
+- A one-sentence **summary**
+- A **deadline** (if one is mentioned)
+- A list of **action items**, with responsible roles (painter, carpenter,
+  electrician, etc.) inferred from context when not explicitly stated
+
+## The Bug: Empty Action Items & Deadline, No Visible Errors
+
+### Symptom
+
+The frontend consistently rendered **zero action items and no deadline**
+after clicking "Analyze Communication" — with no failed network requests,
+no red console errors, and a `200 OK` response every time.
+
+### Why It Was Hard to Catch
+
+The root cause was a **silent fallback**. If the Gemini API call failed for
+*any* reason, the backend caught the error internally and quietly served a
+much weaker regex-based local extraction instead — with no signal to the
+frontend that anything had gone wrong.
+
+```ts
+// Before: failure was swallowed with no trace
+const geminiResult = await callGemini(text);
+
+if (geminiResult) {
+  return NextResponse.json(geminiResult);
+}
+
+// Silently degrades to a lower-quality extraction — client has no idea
+return NextResponse.json(localFallback(text));
+```
+
+From the browser's perspective, everything "succeeded" — it just succeeded
+with degraded data. This is a classic case where **swallowing errors for
+resilience accidentally hides the real bug**.
+
+### Diagnosis Process
+
+1. **Ruled out the frontend first.** Traced the state flow (`fetch` →
+   `setAnalysisResult` → render) and confirmed the rendering logic was
+   correct — the array really was arriving empty/weak from the server, not
+   getting lost in the UI.
+
+2. **Added temporary debug fields** to the API response so the failure
+   reason was visible without digging through server logs on every request:
+
+   ```ts
+   interface AnalysisResponse extends AnalysisResult {
+     _source: "gemini" | "fallback";
+     _fallbackReason?: string;
+   }
+   ```
+
+3. **This immediately surfaced two separate, sequential root causes:**
+
+   | # | Issue | Fix |
+   |---|-------|-----|
+   | 1 | `GEMINI_API_KEY` was `undefined` server-side, even though it existed in a `.env` file | The `.env` file was inside `src/`. Next.js **only auto-loads env files from the project root** (same level as `package.json`). Moved the file to fix it. |
+   | 2 | Once the key was found, requests failed with `HTTP 404` | The model `gemini-2.5-flash` had been retired for new API users. Google's error response included the replacement model name (`gemini-3.6-flash`), which was swapped in — same `generateContent` endpoint and request shape, no other changes needed. |
+
+### Fix Summary
+
+- Moved `.env.local` to the project root so Next.js could load it correctly.
+- Updated the Gemini model string to the currently supported model.
+- Added structured error logging (`console.error`) at every failure point
+  inside `callGemini()` — missing key, non-200 response, blocked prompt,
+  invalid JSON, schema mismatch, zero action items returned — so future
+  failures are diagnosable from server logs alone.
+- Removed the temporary `_source` / `_fallbackReason` debug fields from the
+  client-facing response once the fix was verified (kept the underlying
+  `console.error` logging server-side only).
+
+## Key Takeaway
+
+**Silent fallbacks are dangerous in production because they mask failures
+as successes.** A `catch` block that quietly degrades functionality should
+always log *why* the failure happened, and ideally expose that reason
+somewhere debuggable — structured logs, a debug flag, monitoring — otherwise
+failures get misdiagnosed as bugs in a completely unrelated part of the
+system (in this case, initially suspected as a frontend rendering issue,
+when it was actually two layered backend configuration problems).
+
+### Before / After Example
+
+**Before (silent):**
+```json
+{
+  "summary": "The communication contains important project-related requirements and follow-up actions.",
+  "deadline": null,
+  "actionItems": []
+}
+```
+
+**After (Gemini working correctly):**
+```json
+{
+  "summary": "The client requested adjustments to the living room accent wall, TV cabinet dimensions, and electrical sockets while establishing a budget limit and completion date.",
+  "deadline": "September 20th",
+  "actionItems": [
+    "House painter — Change the living room accent wall to a darker, muted olive green.",
+    "Carpenter — Make the TV cabinet about 8 inches wider.",
+    "Electrician — Install three power sockets behind the TV cabinet.",
+    "Keep the total budget for extra changes under $2,500."
+  ]
+}
+```
+---
+
+## 9. Example Input / Output
 
 **Input (pasted conversation):**
 
@@ -214,7 +330,7 @@ This keeps the "AI suggests → Admin decides" principle consistent: AI never si
 
 ---
 
-## 9. Database Structure (MongoDB)
+## 10. Database Structure (MongoDB)
 
 ```
 Client
@@ -240,7 +356,7 @@ ActionItem
 
 ---
 
-## 10. Limitations
+## 11. Limitations
 
 - Rejecting an item performs a hard delete — there is no soft-delete or audit trail of rejected extractions. Acceptable for this scope, but not production-ready.
 - No authentication/multi-admin support — this is a single-admin dashboard for the demo.
@@ -250,7 +366,7 @@ ActionItem
 
 ---
 
-## 11. What I Would Improve Next
+## 12. What I Would Improve Next
 
 - Automatic capture from WhatsApp Business API / email inbox instead of manual paste, so communications flow in without admin copy-pasting.
 - Soft-delete with an "audit trail" view for rejected items, instead of permanent deletion.
@@ -260,7 +376,7 @@ ActionItem
 
 ---
 
-## 12. What AI Helped With
+## 13. What AI Helped With
 
 - Drafting and refining the initial feature scope and route structure for this build.
 - Generating the Gemini API integration code (structured JSON schema, prompt design).
@@ -271,7 +387,7 @@ All architectural decisions, scope boundaries, and final code were reviewed and 
 
 ---
 
-## 13. Live Demo
+## 14. Live Demo
 
 `[deployed URL — to be added]`
 
