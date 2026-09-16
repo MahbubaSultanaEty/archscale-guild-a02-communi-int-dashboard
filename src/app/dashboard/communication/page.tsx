@@ -2,6 +2,7 @@
 
 import React, { useId, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Priority } from "@/types";
 
 interface AnalysisResult {
@@ -20,6 +21,7 @@ interface SavedActionItem {
 }
 
 export default function CommunicationPage() {
+  const router = useRouter();
   const [selectedClient, setSelectedClient] = useState(
     "Evelyn Vance — Vance Penthouse"
   );
@@ -103,22 +105,13 @@ export default function CommunicationPage() {
 
     const [clientName] = selectedClient.split(" — ");
 
-    const payload: SavedActionItem = {
+    const payload = {
       client: clientName || "Client",
-      summary: analysisResult.summary,
-      deadline: globalDeadline.trim() || null,
-      priority: globalPriority,
+      deadline: globalDeadline.trim() || analysisResult.deadline || null,
       actionItems: analysisResult.actionItems,
-      status: "Pending",
     };
 
     try {
-      /*
-       * MongoDB is not connected yet.
-       *
-       * This POST endpoint is ready for the CRUD/API layer.
-       * Later, /api/action-items can save this JSON payload to MongoDB.
-       */
       const response = await fetch("/api/action-items", {
         method: "POST",
         headers: {
@@ -128,7 +121,10 @@ export default function CommunicationPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to save action items");
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          errorData?.error || "Failed to save action items to MongoDB"
+        );
       }
 
       setSaveSuccessNotice(true);
@@ -138,12 +134,14 @@ export default function CommunicationPage() {
       setGlobalDeadline("");
 
       setTimeout(() => {
-        setSaveSuccessNotice(false);
-      }, 3500);
+        router.push("/dashboard/action-items");
+      }, 1000);
     } catch (error) {
       console.error(error);
       setErrorNotice(
-        "Could not save the action items. Please try again."
+        error instanceof Error
+          ? error.message
+          : "Could not save the action items. Please try again."
       );
     } finally {
       setIsSaving(false);
@@ -156,9 +154,11 @@ export default function CommunicationPage() {
 
   const handleDiscard = () => {
     setAnalysisResult(null);
+    setRawText("");
     setGlobalPriority("Medium");
     setGlobalDeadline("");
     setErrorNotice(null);
+    window.location.reload();
   };
 
   return (

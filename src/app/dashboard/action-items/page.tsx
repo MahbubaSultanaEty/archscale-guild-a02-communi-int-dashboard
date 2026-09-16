@@ -1,139 +1,182 @@
 "use client";
 
-import React, { useState, useId } from "react";
+import React, { useState, useEffect, useId, useCallback } from "react";
 import TaskCard from "@/components/TaskCard";
-import { ActionItem, Priority, Status } from "@/types";
-
-const INITIAL_ITEMS: ActionItem[] = [
-  {
-    id: "act-1",
-    client: "Evelyn Vance",
-    project: "Vance Penthouse",
-    date: "Sep 7, 2026",
-    description: "Review and approve Italian Calacatta marble slab alternatives due to supplier lead-time delay on master bathroom vanity.",
-    priority: "High",
-    deadline: "2026-09-12",
-    status: "Pending",
-  },
-  {
-    id: "act-2",
-    client: "Marcus & Olivia Sterling",
-    project: "Komorebi Modern Pavilion",
-    date: "Sep 6, 2026",
-    description: "Transmit revised millwork drawings for custom acoustic walnut panelling in private listening room to contractor.",
-    priority: "Medium",
-    deadline: "2026-09-18",
-    status: "Pending",
-  },
-  {
-    id: "act-3",
-    client: "Julian Thorne",
-    project: "Thorne Residence",
-    date: "Sep 5, 2026",
-    description: "Sign off on brass hardware finish samples and confirm delivery window with Paris foundry.",
-    priority: "Low",
-    deadline: "2026-09-25",
-    status: "Completed",
-  },
-];
+import { ActionItem } from "@/types";
 
 export default function ActionItemsPage() {
-  const [items, setItems] = useState<ActionItem[]>(INITIAL_ITEMS);
+  const [items, setItems] = useState<ActionItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterClient, setFilterClient] = useState("All");
-  const [filterStatus, setFilterStatus] = useState<"All" | Status>("All");
-  const [filterPriority, setFilterPriority] = useState<"All" | Priority>("All");
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 4;
+  const [filterStatus, setFilterStatus] = useState<string>("All");
 
-  const filterClientId = useId();
   const filterSearchId = useId();
   const filterStatusId = useId();
-  const filterPriorityId = useId();
 
-  // Toggle Item Completion (ready for MongoDB / API update)
-  const toggleItemStatus = (id: string) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, status: item.status === "Pending" ? "Completed" : "Pending" }
-          : item
-      )
-    );
+  // Fetch real data using GET /api/action-items
+  const fetchActionItems = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch("/api/action-items");
+      if (!res.ok) {
+        throw new Error("Failed to load action items");
+      }
+      const data: ActionItem[] = await res.json();
+      setItems(data);
+    } catch (error) {
+      console.error(error);
+      setErrorMessage("Could not load action items from the server.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchActionItems();
+  }, [fetchActionItems]);
+
+  // Toggle Item Status using PATCH /api/action-items
+  const handleToggleStatus = async (id: string, currentStatus: string) => {
+    const nextStatus =
+      currentStatus.toLowerCase() === "completed" ? "pending" : "completed";
+    setUpdatingId(id);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch("/api/action-items", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id,
+          status: nextStatus,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.error || "Failed to update task status");
+      }
+
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, status: nextStatus } : item
+        )
+      );
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Failed to update task status"
+      );
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
-  // Reject Item (ready for MongoDB / API delete)
-  const handleReject = (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  // Delete Item using DELETE /api/action-items
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await fetch(`/api/action-items?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.error || "Failed to delete task");
+      }
+
+      setItems((prev) => prev.filter((item) => item.id !== id));
+      setSuccessMessage("Task deleted successfully!");
+
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 3500);
+    } catch (error) {
+      console.error(error);
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete task. Please try again."
+      );
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   // Filtering
   const filteredItems = items.filter((item) => {
+    const taskText = (item.task || item.description || "").toLowerCase();
+    const clientText = (item.client || "").toLowerCase();
+    const query = searchQuery.toLowerCase();
+
     const matchesSearch =
-      item.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.project.toLowerCase().includes(searchQuery.toLowerCase());
+      taskText.includes(query) || clientText.includes(query);
 
-    const matchesClient = filterClient === "All" || item.client === filterClient;
-    const matchesStatus = filterStatus === "All" || item.status === filterStatus;
-    const matchesPriority = filterPriority === "All" || item.priority === filterPriority;
+    const matchesStatus =
+      filterStatus === "All" ||
+      item.status.toLowerCase() === filterStatus.toLowerCase();
 
-    return matchesSearch && matchesClient && matchesStatus && matchesPriority;
+    return matchesSearch && matchesStatus;
   });
-
-  const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
-  const paginatedItems = filteredItems.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
-
-  const uniqueClients = Array.from(new Set(items.map((i) => i.client)));
 
   return (
     <div className="space-y-6">
-      {/* Horizontal Glass Filter Bar */}
+      {/* Success Notification */}
+      {successMessage && (
+        <div className="p-4 rounded-xl bg-[#2F6B4F]/90 border border-white/30 text-white text-sm flex items-center justify-between shadow-lg">
+          <span className="flex items-center gap-2 font-medium">
+            ✓ {successMessage}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSuccessMessage(null)}
+            className="text-xs underline text-white/80 cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Error Notification */}
+      {errorMessage && (
+        <div className="p-4 rounded-xl bg-red-900/80 border border-red-400/40 text-white text-sm flex items-center justify-between shadow-lg">
+          <span>✕ {errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="text-xs underline text-white/80 cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Filter Bar */}
       <div className="glass-panel p-4 sm:p-5 flex flex-wrap items-center gap-3">
         {/* Search input */}
         <div className="flex-1 min-w-[200px]">
           <label htmlFor={filterSearchId} className="sr-only">
-            Search actions, clients, keywords...
+            Search tasks or clients...
           </label>
           <input
             id={filterSearchId}
             type="text"
-            placeholder="Search actions, clients, keywords..."
+            placeholder="Search tasks, details, clients..."
             value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full px-4 py-2.5 glass-input text-sm text-white font-body"
           />
-        </div>
-
-        {/* Client filter */}
-        <div className="w-full sm:w-auto">
-          <label htmlFor={filterClientId} className="sr-only">
-            Filter by Client
-          </label>
-          <select
-            id={filterClientId}
-            value={filterClient}
-            onChange={(e) => {
-              setFilterClient(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="w-full sm:w-44 px-3 py-2.5 glass-input text-sm text-white cursor-pointer [&>option]:bg-[#0F2A1F] font-body"
-          >
-            <option value="All">All Clients</option>
-            {uniqueClients.map((client) => (
-              <option key={client} value={client}>
-                {client}
-              </option>
-            ))}
-          </select>
         </div>
 
         {/* Status filter */}
@@ -144,86 +187,41 @@ export default function ActionItemsPage() {
           <select
             id={filterStatusId}
             value={filterStatus}
-            onChange={(e) => {
-              setFilterStatus(e.target.value as "All" | Status);
-              setCurrentPage(1);
-            }}
-            className="w-full sm:w-36 px-3 py-2.5 glass-input text-sm text-white cursor-pointer [&>option]:bg-[#0F2A1F] font-body"
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="w-full sm:w-40 px-3 py-2.5 glass-input text-sm text-white cursor-pointer [&>option]:bg-[#0F2A1F] font-body"
           >
             <option value="All">All Statuses</option>
-            <option value="Pending">Pending</option>
-            <option value="Completed">Completed</option>
-          </select>
-        </div>
-
-        {/* Priority filter */}
-        <div className="w-full sm:w-auto">
-          <label htmlFor={filterPriorityId} className="sr-only">
-            Filter by Priority
-          </label>
-          <select
-            id={filterPriorityId}
-            value={filterPriority}
-            onChange={(e) => {
-              setFilterPriority(e.target.value as "All" | Priority);
-              setCurrentPage(1);
-            }}
-            className="w-full sm:w-36 px-3 py-2.5 glass-input text-sm text-white cursor-pointer [&>option]:bg-[#0F2A1F] font-body"
-          >
-            <option value="All">All Priorities</option>
-            <option value="High">High Priority</option>
-            <option value="Medium">Medium</option>
-            <option value="Low">Low</option>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
           </select>
         </div>
       </div>
 
-      {/* Cards Stack (16px gaps, using reusable TaskCard) */}
-      <div className="space-y-4">
-        {paginatedItems.length === 0 ? (
-          <div className="glass-panel p-12 text-center text-[#EAF6EE]/75 text-sm font-body">
-            No action items match the current filters.
-          </div>
-        ) : (
-          paginatedItems.map((item) => (
+      {/* Loading state */}
+      {isLoading ? (
+        <div className="glass-panel p-12 text-center text-[#EAF6EE]/75 text-sm font-body">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-white mb-2" />
+          <p>Loading action items from MongoDB...</p>
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="glass-panel p-12 text-center text-[#EAF6EE]/75 text-sm font-body">
+          {items.length === 0
+            ? "No action items saved yet. Analyze communications to extract and save action items!"
+            : "No action items match the current filters."}
+        </div>
+      ) : (
+        /* Responsive Grid: Mobile 1 col, Tablet 2 cols, Desktop 3 cols */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredItems.map((item) => (
             <TaskCard
               key={item.id}
               item={item}
-              onToggleComplete={toggleItemStatus}
-              onReject={handleReject}
+              onToggleStatus={handleToggleStatus}
+              onDelete={handleDelete}
+              isUpdating={updatingId === item.id}
+              isDeleting={deletingId === item.id}
             />
-          ))
-        )}
-      </div>
-
-      {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3 pt-4 font-body">
-          <button
-            type="button"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            className={`px-4 py-2 text-xs rounded-full glass-panel cursor-pointer text-[#EAF6EE] transition-all ${
-              currentPage === 1 ? "opacity-40 cursor-not-allowed" : "hover:bg-[#0F2A1F]/80"
-            }`}
-          >
-            ← Previous
-          </button>
-
-          <span className="text-xs text-[#EAF6EE]/85 px-2 font-medium">
-            Page {currentPage} of {totalPages}
-          </span>
-
-          <button
-            type="button"
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            className={`px-4 py-2 text-xs rounded-full glass-panel cursor-pointer text-[#EAF6EE] transition-all ${
-              currentPage === totalPages ? "opacity-40 cursor-not-allowed" : "hover:bg-[#0F2A1F]/80"
-            }`}
-          >
-            Next →
-          </button>
+          ))}
         </div>
       )}
     </div>

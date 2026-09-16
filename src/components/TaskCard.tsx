@@ -5,93 +5,118 @@ import { ActionItem } from "@/types";
 
 interface TaskCardProps {
   item: ActionItem;
-  onToggleComplete?: (id: string) => void;
-  onReject?: (id: string) => void;
+  onToggleStatus: (id: string, currentStatus: string) => Promise<void> | void;
+  onDelete: (id: string) => Promise<void> | void;
+  isUpdating?: boolean;
+  isDeleting?: boolean;
 }
 
-const PRIORITY_STYLES: Record<string, string> = {
-  High: "bg-[#FFC466]/20 text-[#FFC466] border border-[#FFC466]/40",
-  Medium: "bg-white/10 text-[#EAF6EE]/80 border border-white/20",
-  Low: "bg-white/5 text-[#EAF6EE]/50 border border-white/10",
-};
+export default function TaskCard({
+  item,
+  onToggleStatus,
+  onDelete,
+  isUpdating = false,
+  isDeleting = false,
+}: TaskCardProps) {
+  const isCompleted = item.status.toLowerCase() === "completed";
 
-export default function TaskCard({ item, onToggleComplete, onReject }: TaskCardProps) {
-  const isCompleted = item.status === "Completed";
+  const formattedSavedAt = item.savedAt
+    ? new Date(item.savedAt).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
 
   return (
     <article
-      className={`glass-panel p-5 sm:p-6 flex flex-col gap-4 transition-all ${
-        isCompleted ? "opacity-60" : ""
+      className={`glass-panel p-5 flex flex-col justify-between gap-4 transition-all duration-200 hover:border-white/30 ${
+        isCompleted ? "opacity-70 bg-[#0F2A1F]/45" : ""
       }`}
     >
-      {/* Top row: client name + date */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-[#EAF6EE]/60 font-body font-medium">
-            {item.project}
-          </p>
-          <h3 className="font-heading text-white text-lg sm:text-[19px] tracking-wide leading-snug">
-            {item.client}
-          </h3>
-        </div>
-        <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className="text-xs text-[#EAF6EE]/55 font-body">{item.date}</span>
-          {item.deadline && (
-            <span className="text-xs text-[#FFC466]/80 font-body">Due: {item.deadline}</span>
+      <div className="space-y-3">
+        {/* Top Header: Client name or Tag + Status Badge */}
+        <div className="flex items-center justify-between gap-2">
+          {item.client ? (
+            <span className="text-xs uppercase tracking-wider text-[#EAF6EE]/70 font-semibold font-body truncate">
+              {item.client}
+            </span>
+          ) : (
+            <span className="text-xs uppercase tracking-wider text-[#FFC466]/80 font-medium font-body">
+              Action Item
+            </span>
           )}
-        </div>
-      </div>
 
-      {/* Action / Decision text */}
-      <p
-        className={`text-sm font-body leading-relaxed ${
-          isCompleted ? "line-through text-white/50" : "text-white/90"
-        }`}
-      >
-        {item.description}
-      </p>
-
-      {/* Bottom row: priority badge + status + buttons */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
-        <div className="flex items-center gap-2">
+          {/* Status Badge */}
           <span
-            className={`text-xs font-semibold px-3 py-1 rounded-full ${
-              PRIORITY_STYLES[item.priority] || PRIORITY_STYLES["Medium"]
-            }`}
-          >
-            {item.priority}
-          </span>
-
-          <span className="text-[#EAF6EE]/30 text-xs">·</span>
-
-          <span
-            className={`text-xs font-body ${
-              isCompleted ? "text-[#EAF6EE]/45" : "text-[#EAF6EE]/80 font-medium"
+            className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full capitalize font-body tracking-wide ${
+              isCompleted
+                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                : "bg-amber-400/20 text-amber-300 border border-amber-400/30"
             }`}
           >
             {item.status}
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {onToggleComplete && (
-            <button
-              type="button"
-              onClick={() => onToggleComplete(item.id)}
-              className="px-5 py-1.5 btn-primary text-xs cursor-pointer"
-            >
-              {isCompleted ? "Undo" : "Complete"}
-            </button>
+        {/* Task Description */}
+        <p
+          className={`text-sm font-body leading-relaxed break-words ${
+            isCompleted ? "line-through text-white/50" : "text-white/95"
+          }`}
+        >
+          {item.task || item.description}
+        </p>
+      </div>
+
+      <div className="space-y-3 pt-3 border-t border-white/10">
+        {/* Metadata: Deadline and SavedAt */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#EAF6EE]/60 font-body">
+          {item.deadline ? (
+            <span className="flex items-center gap-1 text-[#FFC466]/90 font-medium">
+              <span>📅</span> Due: {item.deadline}
+            </span>
+          ) : (
+            <span className="text-[#EAF6EE]/40">No deadline</span>
           )}
-          {onReject && (
-            <button
-              type="button"
-              onClick={() => onReject(item.id)}
-              className="px-4 py-1.5 btn-ghost text-xs cursor-pointer"
-            >
-              Reject
-            </button>
+
+          {formattedSavedAt && (
+            <span className="text-[11px] text-[#EAF6EE]/50">
+              {formattedSavedAt}
+            </span>
           )}
+        </div>
+
+        {/* Action Controls: Status Control & Delete */}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          {/* Status Control */}
+          <button
+            type="button"
+            disabled={isUpdating || isDeleting}
+            onClick={() => onToggleStatus(item.id, item.status)}
+            className={`px-3.5 py-1.5 text-xs font-semibold rounded-full transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+              isCompleted
+                ? "btn-ghost hover:bg-white/10 text-white"
+                : "btn-primary"
+            }`}
+          >
+            {isUpdating
+              ? "Updating..."
+              : isCompleted
+              ? "Mark Pending"
+              : "Mark Completed"}
+          </button>
+
+          {/* Delete Button */}
+          <button
+            type="button"
+            disabled={isUpdating || isDeleting}
+            onClick={() => onDelete(item.id)}
+            className="px-3 py-1.5 text-xs rounded-full border border-red-400/30 text-red-300/80 hover:text-red-200 hover:bg-red-500/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDeleting ? "Deleting..." : "Delete"}
+          </button>
         </div>
       </div>
     </article>

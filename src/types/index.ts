@@ -1,15 +1,17 @@
 export type Priority = "High" | "Medium" | "Low";
-export type Status = "Pending" | "Completed";
+export type Status = "Pending" | "Completed" | "pending" | "completed";
 
 export interface ActionItem {
   id: string;
-  client: string;
-  project: string;
-  date: string;
-  description: string;
-  priority: Priority;
-  deadline?: string;
-  status: Status;
+  task: string;
+  client?: string | null;
+  project?: string | null;
+  date?: string | null;
+  description?: string;
+  priority?: Priority;
+  deadline?: string | null;
+  status: string;
+  savedAt?: string | null;
 }
 
 // Simplified API response — decisions ARE the actions
