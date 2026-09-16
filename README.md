@@ -389,8 +389,8 @@ All architectural decisions, scope boundaries, and final code were reviewed and 
 
 ## 14. Live Demo
 
-`[deployed URL — to be added]`
+`[https://archscale-guild-a02-communi-int-das.vercel.app/dashboard]`
 
 ## 14. Video Walkthrough
 
-`[3–5 minute video link — to be added]`
+`[https://youtu.be/PYfo5ZYDmHg]`
